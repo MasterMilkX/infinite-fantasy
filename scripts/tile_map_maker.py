@@ -2,18 +2,43 @@ import numpy as np
 from PIL import Image
 import math
 import os
+from tqdm import tqdm
+import json
 
 class TileMapMaker():
 	def __init__(self, map_path,tilesize=16):
+		self.map_name = os.path.basename(map_path).split(".")[0]
 		self.og_map = np.array(Image.open(map_path).convert('L'))		# read in the map image path and parse as integer array [0-255]
 		self.tsize = tilesize
 
+	#returns the og map without the border
+	def removeBorder(self, ws, thick=1):
+		bmap = self.og_map[:]
+
+		#make border indexes
+		hbor = []
+		for b in range(thick):
+			hbor += list(range(b,bmap.shape[0],(ws[1]*self.tsize)+thick))
+		vbor = []
+		for b in range(thick):
+			vbor += list(range(b,bmap.shape[1],(ws[0]*self.tsize)+thick))
+
+		#remove the border from the map and return
+		bmap = np.delete(bmap, hbor, axis=0)
+		bmap = np.delete(bmap, vbor, axis=1)
+
+		return bmap
+
 	#divides the map based on tiles
-	def splitMap2Tiles(self, offX=0, offY=0):
+	def splitMap2Tiles(self, offX=0, offY=0, border=0, ws=None):
+		spMap = self.og_map[:]
+
 		#assuming map is in 2d form
+		if border > 0 and ws != None:
+			spMap = self.removeBorder(ws,border)
 
 		#offset the original map
-		newmap = self.og_map[offX:,offY:]
+		newmap = spMap[offX:,offY:]
 
 		#get w x h dimensions 
 		width = int((newmap.shape[0])/self.tsize)
@@ -122,7 +147,7 @@ class TileMapMaker():
 						window.append(tile)
 				b.append(window)
 		 
-		b = np.array(b).reshape(np.prod(nw),ws[1],ws[0])
+		b = np.array(b).reshape(nw[1],nw[0],ws[1],ws[0])
 		return b
 
 	#export the tile set to a png
@@ -169,41 +194,137 @@ class TileMapMaker():
 		return
 
 	#exports the ascii map generated from the tileset to a csv file
-	def exportAsciiMap(self,ascii_map,name='ascii_map'):
+	def exportAsciiMap(self,ascii_map,name='ascii_map',extension='csv',delim=','):
 		if not os.path.exists('ascii_maps'):
 			os.makedirs('ascii_maps')
 
-		path = "ascii_maps/" + name + ".csv"
-		np.savetxt(path, np.asarray(ascii_map), delimiter=",",fmt='%s')
+		path = "ascii_maps/" + name + "." + extension
+		np.savetxt(path, np.asarray(ascii_map), delimiter=delim,fmt='%s')
 		print("** Exported to '%s' @ (%d x %d) map size ** " % (path, ascii_map.shape[0], ascii_map.shape[1]))
 		return
 
+	#export the window data to json format
+	def exportWindows(self, windows,name='windows'):
+		#check if folder exists first
+		if not os.path.exists('map_windows'):
+			os.makedirs('map_windows')
 
+		i = 0
+		wd = {}
+		wm = []
+		#assign each window an index
+		for y in range(windows.shape[0]):
+			r = []
+			for x in range(windows.shape[1]):
+				wd[i] = windows[y][x].tolist()
+				i+=1
+				r.append(i)
+			wm.append(r)
+
+		#export to path
+		s = {'windows':wd,'map':wm}
+		path = "map_windows/" + name + ".json"
+		with open(path, "w") as outfile:  
+			json.dump(s, outfile) 
+
+		print("** Exported to '%s' @ (%d x %d) windows ** " % (path, windows.shape[1], windows.shape[0]))
+
+		return
+
+	#finds the best tile set and occurence set based on calculated offset
+	def findBestTileSplit(self,drop_tiles,border=0,ws=None):
+		bestOff = (0,0)
+		oc = None
+		tm = None
+		lowDrop = 100
+
+		#go through every pixel combination
+		with tqdm(total=(self.tsize**2)) as pbar:
+			for a in range(self.tsize):
+				for b in range(self.tsize):
+					t = self.splitMap2Tiles(offX=a,offY=b,border=border,ws=ws)		#get tiles split from the original map
+					o = self.getTileOccurrences(t)				#get tile occurrences
+					dp = self.tileDropPercentage(o,drop_tiles)
+
+					pbar.update(1)	#update progress bar
+
+					#if lowest drop percentage seen, save the offset and tiles
+					if dp < lowDrop:
+						bestOff = (a,b)
+						lowDrop = dp
+						oc = o
+						tm = t
+
+					#if drop percentage under 5% then stop looking altogether
+					if lowDrop < 5.0:
+						return tm, oc, bestOff, lowDrop
+
+		#return best found
+		return tm, oc, bestOff, lowDrop
+
+	#makes ascii map, windows, and tilesheet based calculated offset 
+	def run(self,tilesize,ws,drop_tiles=5,border=0,calcOffSet=False,DEBUG=False):
+		if DEBUG:
+			print("-- Map:\t\t" + str(self.map_name))
+
+		self.tsize = tilesize
+		if DEBUG:
+			print("-- Tile size:\t" + str(self.tsize) + " x " + str(self.tsize))
+			print("-- Border:\t" + str(border))
+
+		
+		if calcOffSet:
+			if DEBUG:
+				print(" > Calculating Offset **")
+
+			#get the best split of tiles
+			tm, oc, off, drop = self.findBestTileSplit(drop_tiles,border,ws) 
+			if DEBUG:
+				print("-- Drop %:\t" + str(drop) +"%")
+				print("-- Map Offset:\t" + str(off))  
+		
+		else:
+			if DEBUG:
+				print(" > USING OFFSET (0,0) **")
+
+			#get the tileset and tile occurrences (assume offset = (0,0))
+			tm = self.splitMap2Tiles(border=border,ws=ws)
+			oc = self.getTileOccurrences(tm)
+
+		#make the tileset with associated indexes 
+		tset = self.makeTileSet(oc)
+		if DEBUG:
+			print("-- # tiles:\t" + str(len(tset)))
+
+		#create the ascii map using the original map and the newly made tileset
+		am = self.makeAsciiMap(tset, tm)
+		if DEBUG:
+			print("-- Ascii Map:\t" + str(am.shape))
+
+		#create the windows sets
+		wm = self.asciiWindows(am,ws)
+		if DEBUG:
+			print("-- # windows:\t" + str(wm.shape[0]*wm.shape[1]))
+			print("")
+
+		#export the tileset and ascii map
+		self.exportTileSheet(tset,self.map_name+"_tileset")
+		self.exportAsciiMap(am,self.map_name+"_ascii")
+		self.exportWindows(wm,self.map_name+"_windows")
+
+		
 #run demo for link's awakening map
 if __name__ == "__main__":
-	
-	window_size = (10,8)
+	'''
+	window_size = (16,10)
+	border = 1
+	TMM = TileMapMaker('maps/zelda_1.png')
+	'''
 
+	window_size = (10,9)
+	border = 0
 	TMM = TileMapMaker('maps/links_awakening.png')
-	print("Original Map:\t%s" % str(TMM.og_map.shape))
 
-	tm = TMM.splitMap2Tiles(offX=0,offY=0)
-	print("Tile Set shape:\t%s" % str(tm.shape))
+	TMM.run(16,window_size,border=border,DEBUG=True,calcOffSet=False)
+	
 
-	oc = TMM.getTileOccurrences(tm)
-	drop_perc = 5
-	print("Drop % @ " + str(drop_perc) + " tiles: " + str(TMM.tileDropPercentage(oc,drop_perc)) + "%")
-
-	tset = TMM.makeTileSet(oc)
-	print("# tiles: " + str(len(tset)))
-
-	am = TMM.makeAsciiMap(tset,tm)
-	print("Ascii Map Shape: " + str(am.shape))
-	#print(am[10:20,10:20])
-
-	wm = TMM.asciiWindows(am, window_size)
-	print("# windows: " + str(wm.shape[0]))
-	#print(wm[0])
-
-	TMM.exportTileSheet(tset,"links_awakening_tileset")
-	TMM.exportAsciiMap(am,"links_awakening_ascii")
