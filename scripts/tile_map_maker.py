@@ -150,14 +150,12 @@ class TileMapMaker():
 		b = np.array(b).reshape(nw[1],nw[0],ws[1],ws[0])
 		return b
 
-	#export the tile set to a png
-	def exportTileSheet(self, tileset,name='tileset'):
-		if not os.path.exists('tilesheets'):
-			os.makedirs('tilesheets')
-
+	#create a tilesheet image from the tileset
+	def tileset2Sheet(self, tileset):
 		tiles = sorted(tileset, key=lambda x: x[1])
 		w = math.ceil(math.sqrt(len(tiles)))
-		h = int(len(tiles)/w)
+		h = math.ceil(len(tiles)/w)
+		#h = int(len(tiles)/w)
 
 		#convert the tiles back to grayscale colors
 		img = []
@@ -179,16 +177,41 @@ class TileMapMaker():
 					r = np.hstack((r,img[i]))
 				i+=1
 
+				if(i >= len(tiles)):
+					break
+
+			#fill in the rest if out of tiles
+			if(i >= len(tiles) and len(r) < (w*self.tsize)):
+				o = w - int(r.shape[1]/self.tsize)
+				filler = np.zeros([self.tsize, self.tsize],dtype='uint8')
+				for t in range(o):
+					r = np.hstack((r,filler))
+
 			#stack tileset rows vertically 
 			if(len(img2) == 0):
 				img2 = r[:]
 			else:
 				img2 = np.vstack((img2,r))
 
+			#out of tiles? end
+			if(i >= len(tiles)):
+				break
+
+			
+
+
 		#export the tilesheet
 		img_out = Image.fromarray(img2,'L')
+		return img_out, w, h
+
+	#export the tile set to a png
+	def exportTileSheet(self, tileset,name='tileset'):
+		if not os.path.exists('tilesheets'):
+			os.makedirs('tilesheets')
+
+		sheet, w, h = self.tileset2Sheet(tileset)
 		path = ("tilesheets/" + name + ".png")
-		img_out.save(path)
+		sheet.save(path)
 
 		print("** Exported to '%s' @ (%d x %d) tiles ** " % (path, w, h))
 		return
@@ -200,7 +223,7 @@ class TileMapMaker():
 
 		path = "ascii_maps/" + name + "." + extension
 		np.savetxt(path, np.asarray(ascii_map), delimiter=delim,fmt='%s')
-		print("** Exported to '%s' @ (%d x %d) map size ** " % (path, ascii_map.shape[0], ascii_map.shape[1]))
+		print("** Exported to '%s' @ (%d x %d) map size ** " % (path, ascii_map.shape[1], ascii_map.shape[0]))
 		return
 
 	#export the window data to json format
@@ -212,13 +235,14 @@ class TileMapMaker():
 		i = 0
 		wd = {}
 		wm = []
+
 		#assign each window an index
 		for y in range(windows.shape[0]):
 			r = []
 			for x in range(windows.shape[1]):
 				wd[i] = windows[y][x].tolist()
-				i+=1
 				r.append(i)
+				i+=1
 			wm.append(r)
 
 		#export to path
@@ -262,8 +286,55 @@ class TileMapMaker():
 		#return best found
 		return tm, oc, bestOff, lowDrop
 
+	#import the tileset that was exported (key = index, value = tile (string form))
+	def importTileSet(self,path=None):
+		if path == None:
+			path = "tilesheets/" + self.map_name + "_tileset.png"
+		tileIMG = np.array(Image.open(path).convert('L'))
+
+		#split tiles
+		ts = {}
+		i = 0
+		for y in range(int(tileIMG.shape[0]/self.tsize)):
+			for x in range(int(tileIMG.shape[1]/self.tsize)):
+				ts[i] = self.tile2Str(tileIMG[y*self.tsize:(y+1)*self.tsize, x*self.tsize:(x+1)*self.tsize])
+				i+=1
+
+		return ts
+
+	#import the ascii map that was exported 
+	def importAsciiMap(self, path=None):
+		if path == None:
+			path = "ascii_maps/" + self.map_name + "_ascii.csv"
+
+		#read back in and convert to integer form
+		am = np.genfromtxt(path, delimiter=',').astype(int)
+		return am
+
+	#import the windows json that was exported
+	def importWindows(self, path=None):
+		if path == None:
+			path = "map_windows/" + self.map_name + "_windows.json"
+ 
+		#open the json (windows => int - window ascii, map => array of ints for window index)
+		with open(path) as f:
+			win = json.load(f)
+
+		#map the windows back from their indexing
+		wm = np.array(win["map"][:])
+		wm2 = []
+		for y in range(wm.shape[0]):
+			r = []
+			for x in range(wm.shape[1]):
+				i = str(wm[y][x])
+				#print(win["windows"][i])
+				r.append(np.array(win["windows"][i]))
+			wm2.append(r)
+
+		return np.array(wm2)
+
 	#makes ascii map, windows, and tilesheet based calculated offset 
-	def run(self,tilesize,ws,drop_tiles=5,border=0,calcOffSet=False,DEBUG=False):
+	def run(self,tilesize,ws,drop_tiles=5,border=0,calcOffSet=False,export=True,DEBUG=False):
 		if DEBUG:
 			print("-- Map:\t\t" + str(self.map_name))
 
@@ -308,9 +379,13 @@ class TileMapMaker():
 			print("")
 
 		#export the tileset and ascii map
-		self.exportTileSheet(tset,self.map_name+"_tileset")
-		self.exportAsciiMap(am,self.map_name+"_ascii")
-		self.exportWindows(wm,self.map_name+"_windows")
+		if export:
+			self.exportTileSheet(tset,self.map_name+"_tileset")
+			self.exportAsciiMap(am,self.map_name+"_ascii")
+			self.exportWindows(wm,self.map_name+"_windows")
+
+		#return the tileset, ascii map, and windows (also exported out if option given)
+		return tset, am, wm
 
 		
 #run demo for link's awakening map
@@ -326,5 +401,9 @@ if __name__ == "__main__":
 	TMM = TileMapMaker('maps/links_awakening.png')
 
 	TMM.run(16,window_size,border=border,DEBUG=True,calcOffSet=False)
+
+	print("Imported: #" + str(len(TMM.importTileSet())) + " tiles")
+	print("Imported Ascii Map: " + str(TMM.importAsciiMap().shape))
+	print("Imported windows: " + str(TMM.importWindows().shape))
 	
 
