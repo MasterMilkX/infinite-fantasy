@@ -20,7 +20,7 @@ class TileClusterer():
 
 if __name__ == "__main__()":
 	#get tileset and windows from tile map maker
-	TMM = TileMapMaker('maps/zelda_1.png')
+	TMM = TileMapMaker('maps/links_awakening.png')
 	window_size = (10,9)
 	ts = TMM.importTileSet()
 	wm = TMM.importWindows()
