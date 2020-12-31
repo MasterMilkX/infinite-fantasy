@@ -4,6 +4,7 @@ import math
 import os
 from tqdm import tqdm
 import json
+from utils import *
 
 class TileMapMaker():
 	def __init__(self, map_path,tilesize=16):
@@ -53,31 +54,12 @@ class TileMapMaker():
 
 		return np.array(tilemap).reshape(width,height,self.tsize,self.tsize)
 
-	#convert color number based 2d array tile to string format
-	def tile2Str(self, t):
-		t2 = t.flatten()
-		t2 = ",".join([str(hex(x)) for x in t2])		#make hex valued string for easy storage
-		return t2
-
-	#convert hex string tile to 2d color based tile
-	def tile2Color(self, t_str):
-		t = []
-		i = 0
-		tt = t_str.split(",")
-		for x in range(self.tsize):
-			tx = []
-			for y in range(self.tsize):
-				tx.append(int(tt[i],16))		#convert from hex based to decimal int based
-				i+=1
-			t.append(tx)
-		return np.array(t,dtype='uint8')		#original format of tile
-
 	#gets the occurrences of each tile
 	def getTileOccurrences(self, tilemap):
 		ts = tilemap.reshape(tilemap.shape[0]*tilemap.shape[1],16,16)
 		occ = {}
 		for t in ts:
-			t2 = self.tile2Str(t)
+			t2 = tile2Str(t)
 			if t2 not in occ:		#add new tile
 				occ[t2] = 0
 			occ[t2] += 1			#increment found tile count
@@ -119,7 +101,7 @@ class TileMapMaker():
 		for c in tilemap:
 			cc = []
 			for t in c:
-				t2 = self.tile2Str(t)
+				t2 = tile2Str(t)
 				if not t2 in tileset:
 					cc.append('x')			#special tile
 				else:	
@@ -161,7 +143,7 @@ class TileMapMaker():
 		img = []
 		i = 0
 		for i in range(len(tiles)):
-			img.append(self.tile2Color(tiles[i]))
+			img.append(tile2Color(tiles[i]))
 		img = np.array(img)
 
 		#make tilesheet
@@ -297,7 +279,7 @@ class TileMapMaker():
 		i = 0
 		for y in range(int(tileIMG.shape[0]/self.tsize)):
 			for x in range(int(tileIMG.shape[1]/self.tsize)):
-				ts[i] = self.tile2Str(tileIMG[y*self.tsize:(y+1)*self.tsize, x*self.tsize:(x+1)*self.tsize])
+				ts[i] = tile2Str(tileIMG[y*self.tsize:(y+1)*self.tsize, x*self.tsize:(x+1)*self.tsize])
 				i+=1
 
 		return ts
