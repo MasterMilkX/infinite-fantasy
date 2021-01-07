@@ -171,16 +171,26 @@ class TileClusterer():
 
 
 	#forms k cluster groups from the tileset
-	# (tile+window first - then mirror in largest cluster)
-	def makeCascClusters(self,k,ts,wm):
+	# uses features in first list as initial cluster then second feature set as next cluster
+	# first cluster = k1, internal cluster size = k2
+	# f1 = same adjacent tile, f2 = window location, f3 = partial mirror, f4 = pixel data
+	def makeCascClusters(self,ts,wm,k=[10,3],feats=[[CL_F['PIX_REP']],[CL_F['WIN_LOC']]],weights=[1,1,1,1]):
+		#error check
+		if (len(feats[0]) == 0):
+			print("## ERROR! Cannot have empty feature selection for first cluster! ##")
+			return None
+		if (k[0] == 0):
+			print("## ERROR! Cannot have zero clusters for first cluster! ##")
+			return None
+
+
 		tiles = list(map(lambda x: str(x), ts.keys()))          #tile indexes
 
 		#feature datas
 		adj_tile_perc = self.allAdjTilePerc(tiles, wm)          #adjacent tiles
 		tile_windows = self.allTileWinLoc(tiles,wm)             #window locations
 		atam = self.allTileAlmostMirror(ts,0.7)                 #mirror data
-
-
+		tile_feat = np.array(list(map(lambda x: tile2Color(x,16).flatten()/256,list(ts.values()))))		#raw tile data
 
 
 		#create feature data arrays
@@ -191,43 +201,62 @@ class TileClusterer():
 			for i in self.dirs:
 				l.append(adj_tile_perc[t][i])
 			exp1_data.append(l)
-		exp1_data = np.array(exp1_data)
+		exp1_data = np.array(exp1_data)*weights[0]
 
 		#convert dictionary window values to list in consistent format
 		exp2_data = []
 		for t in tiles:
 			exp2_data.append(tile_windows[t])
-		exp2_data = np.array(exp2_data)
+		exp2_data = np.array(exp2_data)*weights[1]
 
 		#convert dictionary partial mirror tiles to list in consistent format
 		exp3_data = []
 		for t in tiles:
 			exp3_data.append([atam[t]])
-		exp3_data = np.array(exp3_data)
+		exp3_data = np.array(exp3_data)*weights[2]
+
+		#get raw tile representations
+		exp4_data = []
+		for t in tile_feat:
+			exp4_data.append(t)
+		exp4_data = np.array(exp4_data)*weights[3]
 
 
+		all_data = [exp1_data,exp2_data,exp3_data,exp4_data]
+		first_data = []
+		for i in feats[0]:
+			first_data.append(all_data[i])
 
-
-		#make cluster first (tile + window)
-		cluster = KMeans(n_clusters=k).fit(self.combineData([exp1_data,exp2_data]))
+		#make cluster first (feature[0] selection)
+		cluster = KMeans(n_clusters=k[0]).fit(self.combineData(first_data))
 		l = list(cluster.labels_)
 
-		big_label = max(set(l), key = l.count)
+		#cascade features for biggest dataset
+		if k[1] > 0 and len(feats[1]) != 0:
+			big_label = max(set(l), key = l.count)
 
-		#get all elements of biggest cluster
-		b_cluster = {}
-		ind = np.squeeze(np.where(l == big_label))
-
-		#make subset clusters (partial tile mirror set) from largest dataset
-		for t in ind:
-			n = atam[str(t)]
-			if n == 0:
-				l[t] = l[t]
-			else:
-				l[t] = k+n-1
+			#get all elements of biggest cluster
+			b_cluster = {}
+			ind = np.squeeze(np.where(l == big_label))
 
 
+			#get dataset for big cluster items
+			second_data_all = []
+			for i in feats[1]:
+				second_data_all.append(all_data[i])
+			casc_feat = self.combineData(second_data_all)
+			sec_data = casc_feat[ind]
 
+			cluster2 = KMeans(n_clusters=k[1]).fit(sec_data)
+			l2 = list(cluster2.labels_)
+
+			#adjust labels from second dataset
+			for i,a in zip(ind,l2):
+				if a == 0:
+					l[i] = l[i]
+				else:
+					l[i] = k[0]+a-1
+		
 
 		tile_labels = dict(zip(tiles,l))
 		return tile_labels
@@ -243,7 +272,7 @@ class TileClusterer():
 
 
 	#shows the members of the cluster in image form
-	def saveImgCluster(self,c,tiles):
+	def exportImgCluster(self,c,tiles):
 		if not os.path.exists('clusters'):
 			os.makedirs('clusters')
 
@@ -296,31 +325,51 @@ class TileClusterer():
 		path = ("clusters/" + self.map_name + "_cluster.png")
 		plt.savefig(path)
 
+		print("** Exported clustered tiles PNG to '%s' with %d clusters ** " % (path, r))
+
 
 
 
 	#export tiles indexing and their labels
-	def saveTxtCluster(self,c):
+	def exportTxtCluster(self,c):
 		if not os.path.exists('clusters'):
 			os.makedirs('clusters')
-		w = csv.writer(open("clusters/" + self.map_name + "_cluster_labels.csv", "w"))
+		csv_path = "clusters/" + self.map_name + "_cluster_labels.csv"
+		w = csv.writer(open(csv_path, "w"))
 		for key, val in c.items():
 			w.writerow([key, val])
+
+		print("** Exported cluster label CSV to '%s' with %d labels ** " % (csv_path, len(c)))
 		
 
 
 if __name__ == "__main__":
-	#get tileset and windows from tile map maker
-	TMM = TileMapMaker('maps/links_awakening.png')
-	window_size = (10,9)
-	ts = TMM.importTileSet()
-	wm = TMM.importWindows()
+	demo = 1
+
+	if demo == 1:
+		#get tileset and windows from tile map maker
+		TMM = TileMapMaker('maps/zelda_1.png')
+		window_size = (16,11)
+		ts = TMM.importTileSet()
+		wm = TMM.importWindows()
 
 
-	TC = TileClusterer(ts,wm,'maps/links_awakening.png')
-	c = TC.makeCascClusters(7,ts,wm)
-	TC.saveImgCluster(c,ts)
-	TC.saveTxtCluster(c)
+		TC = TileClusterer(ts,wm,'maps/zelda_1.png')
+		c = TC.makeCascClusters(ts,wm,k=[6,3],weights=[1,2,1,1])
+		TC.exportImgCluster(c,ts)
+		TC.exportTxtCluster(c)
+	else:
+		#get tileset and windows from tile map maker
+		TMM = TileMapMaker('maps/links_awakening.png')
+		window_size = (10,9)
+		ts = TMM.importTileSet()
+		wm = TMM.importWindows()
+
+
+		TC = TileClusterer(ts,wm,'maps/links_awakening.png')
+		c = TC.makeCascClusters(ts,wm,k=[10,3],feats=[[CL_F['PIX_REP'],CL_F['ADJ_TILE']],[CL_F['WIN_LOC']]])
+		TC.exportImgCluster(c,ts)
+		TC.exportTxtCluster(c)
 
 
 

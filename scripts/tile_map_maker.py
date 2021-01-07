@@ -30,6 +30,30 @@ class TileMapMaker():
 
 		return bmap
 
+	def highlightBorder(self,ws,thick=1):
+		bmap = self.og_map[:]
+
+		#make border indexes
+		hbor = []
+		for b in range(thick):
+			hbor += list(range(b,bmap.shape[0],(ws[1]*self.tsize)+thick))
+		vbor = []
+		for b in range(thick):
+			vbor += list(range(b,bmap.shape[1],(ws[0]*self.tsize)+thick))
+
+		#remove the border from the map and return
+		for h in hbor:
+			bmap[h,:] = 0
+		for v in vbor:
+			bmap[:,v] = 0
+
+		#show the image
+		img = Image.fromarray(bmap, 'L')
+		img.show()
+
+		
+
+
 	#divides the map based on tiles
 	def splitMap2Tiles(self, offX=0, offY=0, border=0, ws=None):
 		spMap = self.og_map[:]
@@ -76,8 +100,9 @@ class TileMapMaker():
 				dropped += v
 		return (dropped / tot)*100
 
-	#make the tileset associated with number values (based on seeing tiles with 5 or more occurences)
+	#make the tileset associated with number values (based on seeing tiles with x or more occurences)
 	def makeTileSet(self, tilehash, cutoff=5):
+
 		#remove tiles that do not make the cutoff
 		ts = dict(filter(lambda x: x[1] >= cutoff,tilehash.items()))
 
@@ -143,7 +168,7 @@ class TileMapMaker():
 		img = []
 		i = 0
 		for i in range(len(tiles)):
-			img.append(tile2Color(tiles[i]))
+			img.append(tile2Color(tiles[i],self.tsize))
 		img = np.array(img)
 
 		#make tilesheet
@@ -333,7 +358,7 @@ class TileMapMaker():
 			#get the best split of tiles
 			tm, oc, off, drop = self.findBestTileSplit(drop_tiles,border,ws) 
 			if DEBUG:
-				print("-- Drop %:\t" + str(drop) +"%")
+				print("-- Drop %:\t" + str(round(dp,4)) +" %")
 				print("-- Map Offset:\t" + str(off))  
 		
 		else:
@@ -343,9 +368,13 @@ class TileMapMaker():
 			#get the tileset and tile occurrences (assume offset = (0,0))
 			tm = self.splitMap2Tiles(border=border,ws=ws)
 			oc = self.getTileOccurrences(tm)
+			dp = self.tileDropPercentage(oc,drop_tiles)
+
+			if DEBUG:
+				print("-- Drop %:\t" + str(round(dp,4)) +" %")
 
 		#make the tileset with associated indexes 
-		tset = self.makeTileSet(oc)
+		tset = self.makeTileSet(oc,drop_tiles)
 		if DEBUG:
 			print("-- # tiles:\t" + str(len(tset)))
 
@@ -372,19 +401,20 @@ class TileMapMaker():
 		
 #run demo for link's awakening map
 if __name__ == "__main__":
-	'''
-	window_size = (16,10)
-	border = 1
-	TMM = TileMapMaker('maps/zelda_1.png')
-	'''
+	demo = 2
+	
+	if demo == 2:
+		window_size = (16,11)
+		border = 1
+		TMM = TileMapMaker('maps/zelda_1.png')
+	else:
+		window_size = (10,9)
+		border = 0
+		TMM = TileMapMaker('maps/links_awakening.png')
 
-	window_size = (10,9)
-	border = 0
-	TMM = TileMapMaker('maps/links_awakening.png')
+	TMM.run(16,window_size,border=border,DEBUG=True,calcOffSet=False,drop_tiles=5)
 
-	TMM.run(16,window_size,border=border,DEBUG=True,calcOffSet=False)
-
-	print("Imported: #" + str(len(TMM.importTileSet())) + " tiles")
+	print("Imported #:" + str(len(TMM.importTileSet())) + " tiles")
 	print("Imported Ascii Map: " + str(TMM.importAsciiMap().shape))
 	print("Imported windows: " + str(TMM.importWindows().shape))
 	
