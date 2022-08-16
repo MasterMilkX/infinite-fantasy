@@ -1,0 +1,24 @@
+Last login: Mon Dec 13 10:39:42 on ttys000
+M-MacBook-Pro:a3_test milk$ cd a3/
+M-MacBook-Pro:a3 milk$ ls
+58 - Patel, Kevin	78 - Sen
+M-MacBook-Pro:a3 milk$ cd 58\ -\ Patel\,\ Kevin/
+M-MacBook-Pro:58 - Patel, Kevin milk$ ls
+__pycache__		assignment3.py		run_assignment3.py
+M-MacBook-Pro:58 - Patel, Kevin milk$ python run_assignment3.py 
+Traceback (most recent call last):
+  File "run_assignment3.py", line 1, in <module>
+    import assignment3_master as models
+ModuleNotFoundError: No module named 'assignment3_master'
+M-MacBook-Pro:58 - Patel, Kevin milk$ 
+
+
+
+
+
+
+
+
+
+
+

@@ -80,7 +80,7 @@ class TileMapMaker():
 
 	#gets the occurrences of each tile
 	def getTileOccurrences(self, tilemap):
-		ts = tilemap.reshape(tilemap.shape[0]*tilemap.shape[1],16,16)
+		ts = tilemap.reshape(tilemap.shape[0]*tilemap.shape[1],self.tsize,self.tsize)
 		occ = {}
 		for t in ts:
 			t2 = tile2Str(t)

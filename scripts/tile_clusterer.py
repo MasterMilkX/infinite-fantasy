@@ -367,7 +367,7 @@ if __name__ == "__main__":
 
 
 		TC = TileClusterer(ts,wm,'maps/links_awakening.png')
-		c = TC.makeCascClusters(ts,wm,k=[10,3],feats=[[CL_F['PIX_REP'],CL_F['ADJ_TILE']],[CL_F['WIN_LOC']]])
+		c = TC.makeCascClusters(ts,wm,k=[10,3],feats=[[CL_F['WIN_LOC'],CL_F['PIX_REP']],[CL_F['ADJ_TILE']]], weights=[1,0.5,1,1])
 		TC.exportImgCluster(c,ts)
 		TC.exportTxtCluster(c)
 
